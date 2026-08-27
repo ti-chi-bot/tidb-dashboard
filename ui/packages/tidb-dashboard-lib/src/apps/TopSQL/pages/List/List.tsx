@@ -103,6 +103,91 @@ const toTimeRangeValue: typeof _toTimeRangeValue = (v) => {
   return _toTimeRangeValue(v, v?.type === 'recent' ? RECENT_RANGE_OFFSET : 0)
 }
 
+<<<<<<< HEAD
+=======
+type TopSQLQueryParams = {
+  instance: string
+  instance_type: string
+  limit: number
+  group_by: AggLevel
+  order_by: OrderBy
+}
+
+const isSameInstance = (
+  prev: TopsqlInstanceItem | null | undefined,
+  next: TopsqlInstanceItem | null | undefined
+) =>
+  prev?.instance === next?.instance &&
+  prev?.instance_type === next?.instance_type
+
+const findInstance = (
+  instances: TopsqlInstanceItem[],
+  instanceName?: string,
+  instanceType?: string
+) => {
+  if (!instanceName) {
+    return null
+  }
+
+  if (instanceType) {
+    return (
+      instances.find(
+        (item) =>
+          item.instance === instanceName && item.instance_type === instanceType
+      ) ?? null
+    )
+  }
+
+  return instances.find((item) => item.instance === instanceName) ?? null
+}
+
+const resolveSelectedInstance = (
+  instances: TopsqlInstanceItem[],
+  instanceName: string,
+  instanceType: string,
+  storedInstance: TopsqlInstanceItem | null | undefined
+) => {
+  const instanceFromUrl = findInstance(instances, instanceName, instanceType)
+  if (instanceFromUrl) {
+    return instanceFromUrl
+  }
+
+  if (instanceName && instanceType) {
+    return {
+      instance: instanceName,
+      instance_type: instanceType
+    }
+  }
+
+  const instanceFromStorage = findInstance(
+    instances,
+    storedInstance?.instance,
+    storedInstance?.instance_type
+  )
+
+  return instanceFromStorage || storedInstance || instances[0] || null
+}
+
+const normalizeLimit = (value: number) => {
+  return LIMITS.includes(value) ? value : LIMITS[0]
+}
+
+const normalizeGroupBy = (value: string) => {
+  return GROUP.includes(value as AggLevel)
+    ? (value as AggLevel)
+    : AggLevel.Query
+}
+
+const normalizeOrderBy = (value: string) => {
+  if (value === 'block_read') {
+    return OrderBy.RocksdbBlockReadCount
+  }
+  return Object.values(OrderBy).includes(value as OrderBy)
+    ? (value as OrderBy)
+    : OrderBy.CpuTime
+}
+
+>>>>>>> 75011b6fe (topsql: fix Read IOPS order parameter (#1923))
 const isDetailedIoOrderBy = (orderBy: OrderBy) =>
   orderBy === OrderBy.LogicalReadBytes ||
   orderBy === OrderBy.LogicalWriteBytes ||
