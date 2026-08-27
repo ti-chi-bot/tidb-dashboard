@@ -154,6 +154,35 @@ skipOn(Cypress.env('TIDB_VERSION') !== 'latest', () => {
       })
     })
 
+    describe('Detailed I/O ordering', () => {
+      it('uses the backend-compatible order_by for Read IOPS', () => {
+        cy.intercept(
+          `${Cypress.env('apiBasePath')}/topsql/tikv_network_io_collection`,
+          {
+            enable: true,
+            is_multi_value: false,
+            detailed_io_enabled: true
+          }
+        ).as('getTikvNetworkIoCollection')
+
+        setCustomTimeRange(
+          '2022-01-12 00:00:00{enter}2022-01-12 05:00:00{enter}'
+        )
+        cy.wait('@getTopsqlSummary')
+
+        cy.getByTestId('instance-selector').click()
+        cy.contains('.ant-select-item-option', '127.0.0.1:20160').click()
+        cy.wait('@getTikvNetworkIoCollection')
+        cy.wait('@getTopsqlSummary')
+
+        cy.getByTestId('order_by_select').click()
+        cy.getByTestId('order_by_option_rocksdb_block_read_count').click()
+        cy.wait('@getTopsqlSummary')
+          .its('request.url')
+          .should('include', 'order_by=rocksdb_block_read')
+      })
+    })
+
     describe('Refresh', () => {
       it('click refresh button with the recent x time range, fetch the recent x time range data', () => {
         cy.getByTestId('timerange-selector').click()
