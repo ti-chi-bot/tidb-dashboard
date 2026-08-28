@@ -103,93 +103,11 @@ const toTimeRangeValue: typeof _toTimeRangeValue = (v) => {
   return _toTimeRangeValue(v, v?.type === 'recent' ? RECENT_RANGE_OFFSET : 0)
 }
 
-<<<<<<< HEAD
-=======
-type TopSQLQueryParams = {
-  instance: string
-  instance_type: string
-  limit: number
-  group_by: AggLevel
-  order_by: OrderBy
-}
-
-const isSameInstance = (
-  prev: TopsqlInstanceItem | null | undefined,
-  next: TopsqlInstanceItem | null | undefined
-) =>
-  prev?.instance === next?.instance &&
-  prev?.instance_type === next?.instance_type
-
-const findInstance = (
-  instances: TopsqlInstanceItem[],
-  instanceName?: string,
-  instanceType?: string
-) => {
-  if (!instanceName) {
-    return null
-  }
-
-  if (instanceType) {
-    return (
-      instances.find(
-        (item) =>
-          item.instance === instanceName && item.instance_type === instanceType
-      ) ?? null
-    )
-  }
-
-  return instances.find((item) => item.instance === instanceName) ?? null
-}
-
-const resolveSelectedInstance = (
-  instances: TopsqlInstanceItem[],
-  instanceName: string,
-  instanceType: string,
-  storedInstance: TopsqlInstanceItem | null | undefined
-) => {
-  const instanceFromUrl = findInstance(instances, instanceName, instanceType)
-  if (instanceFromUrl) {
-    return instanceFromUrl
-  }
-
-  if (instanceName && instanceType) {
-    return {
-      instance: instanceName,
-      instance_type: instanceType
-    }
-  }
-
-  const instanceFromStorage = findInstance(
-    instances,
-    storedInstance?.instance,
-    storedInstance?.instance_type
-  )
-
-  return instanceFromStorage || storedInstance || instances[0] || null
-}
-
-const normalizeLimit = (value: number) => {
-  return LIMITS.includes(value) ? value : LIMITS[0]
-}
-
-const normalizeGroupBy = (value: string) => {
-  return GROUP.includes(value as AggLevel)
-    ? (value as AggLevel)
-    : AggLevel.Query
-}
-
-const normalizeOrderBy = (value: string) => {
-  return Object.values(OrderBy).includes(value as OrderBy)
-    ? (value as OrderBy)
-    : OrderBy.CpuTime
-}
-
 const isDetailedIoOrderBy = (orderBy: OrderBy) =>
   orderBy === OrderBy.LogicalReadBytes ||
   orderBy === OrderBy.LogicalWriteBytes ||
   orderBy === OrderBy.RocksdbBlockReadCount
 
->>>>>>> d63e580ec (topsql: support detailed TiKV IO dimensions (#1917))
 export function TopSQLList() {
   const ctx = useContext(TopSQLContext)
   const { t } = useTranslation()
@@ -204,7 +122,7 @@ export function TopSQLList() {
   const { timeRange, setTimeRange } = useURLTimeRange()
   const [limit, setLimit] = useState(5)
   const [groupBy, setGroupBy] = useState(AggLevel.Query)
-  const [orderBy, setOrderBy] = useState(OrderBy.CpuTime)
+  const [selectedOrderBy, setOrderBy] = useState(OrderBy.CpuTime)
   const [timeWindowSize, setTimeWindowSize] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const computeTimeWindowSize = useMemoizedFn(
@@ -222,22 +140,10 @@ export function TopSQLList() {
     }
   )
   const {
-<<<<<<< HEAD
-=======
     instances,
     isLoading: isInstancesLoading,
     fetchInstances
   } = useInstances(timeRange)
-  const instance = useMemo(
-    () =>
-      resolveSelectedInstance(
-        instances,
-        queryParams.instance,
-        queryParams.instance_type,
-        storedInstance
-      ),
-    [instances, queryParams.instance, queryParams.instance_type, storedInstance]
-  )
   const {
     data: tikvNetworkIoCollection,
     isLoading: isTikvNetworkIoCollectionLoading,
@@ -258,60 +164,49 @@ export function TopSQLList() {
       tikvNetworkIoCollection?.enable === true &&
       tikvNetworkIoCollection?.is_multi_value !== true &&
       tikvNetworkIoCollection?.detailed_io_enabled === true)
-  const groupBy = useMemo(() => {
-    if (ctx?.cfg.showGroupBy !== true || instance?.instance_type !== 'tikv') {
-      return AggLevel.Query
-    }
-    const group = normalizeGroupBy(queryParams.group_by)
-    if (group === AggLevel.Region && ctx?.cfg.showGroupByRegion !== true) {
-      return AggLevel.Query
-    }
-    return group
-  }, [
-    ctx?.cfg.showGroupBy,
-    ctx?.cfg.showGroupByRegion,
-    instance?.instance_type,
-    queryParams.group_by
-  ])
+
   const orderBy = useMemo(() => {
     if (ctx?.cfg.showOrderBy !== true) {
       return OrderBy.CpuTime
     }
-    const order = normalizeOrderBy(queryParams.order_by)
     if (
       instance?.instance_type !== 'tikv' &&
-      (order === OrderBy.LogicalIoBytes ||
-        order === OrderBy.LogicalReadBytes ||
-        order === OrderBy.LogicalWriteBytes ||
-        order === OrderBy.RocksdbBlockReadCount)
+      (selectedOrderBy === OrderBy.LogicalIoBytes ||
+        isDetailedIoOrderBy(selectedOrderBy))
     ) {
       return OrderBy.CpuTime
     }
     if (
       instance?.instance_type === 'tikv' &&
-      order === OrderBy.LogicalIoBytes &&
+      selectedOrderBy === OrderBy.LogicalIoBytes &&
       detailedIoConfigLoaded &&
       detailedIoDimensionsEnabled
     ) {
       return OrderBy.LogicalReadBytes
     }
     if (
-      isDetailedIoOrderBy(order) &&
+      isDetailedIoOrderBy(selectedOrderBy) &&
       detailedIoConfigLoaded &&
       !detailedIoDimensionsEnabled
     ) {
       return OrderBy.LogicalIoBytes
     }
-    return order
+    return selectedOrderBy
   }, [
     ctx?.cfg.showOrderBy,
     instance?.instance_type,
-    queryParams.order_by,
+    selectedOrderBy,
     detailedIoConfigLoaded,
     detailedIoDimensionsEnabled
   ])
+
+  useEffect(() => {
+    if (selectedOrderBy !== orderBy) {
+      setOrderBy(orderBy)
+    }
+  }, [selectedOrderBy, orderBy])
+
   const {
->>>>>>> d63e580ec (topsql: support detailed TiKV IO dimensions (#1917))
     topSQLData,
     isLoading: isDataLoading,
     updateTopSQLData
@@ -324,51 +219,6 @@ export function TopSQLList() {
     computeTimeWindowSize
   )
   const isLoading = isConfigLoading || isDataLoading
-<<<<<<< HEAD
-  const {
-    instances,
-    isLoading: isInstancesLoading,
-    fetchInstances
-  } = useInstances(timeRange)
-  const {
-    data: tikvNetworkIoCollection,
-    isLoading: isTikvNetworkIoCollectionLoading,
-    sendRequest: refreshTikvNetworkIoCollection
-  } = useClientRequest(ctx!.ds.topsqlTikvNetworkIoCollectionGet, {
-    immediate: false
-  })
-=======
-  const syncSelectedInstance = useMemoizedFn(
-    (nextInstances: TopsqlInstanceItem[]) => {
-      const nextInstance = resolveSelectedInstance(
-        nextInstances,
-        queryParams.instance,
-        queryParams.instance_type,
-        storedInstance
-      )
-
-      if (!nextInstance) {
-        return null
-      }
-
-      if (!isSameInstance(storedInstance, nextInstance)) {
-        setStoredInstance(nextInstance)
-      }
-
-      if (
-        queryParams.instance !== nextInstance.instance ||
-        queryParams.instance_type !== nextInstance.instance_type
-      ) {
-        setQueryParams({
-          instance: nextInstance.instance!,
-          instance_type: nextInstance.instance_type!
-        })
-      }
-
-      return nextInstance
-    }
-  )
->>>>>>> d63e580ec (topsql: support detailed TiKV IO dimensions (#1917))
 
   const handleBrushEnd: BrushEndListener = useCallback(
     (v: BrushEvent) => {
@@ -493,29 +343,7 @@ export function TopSQLList() {
               <InstanceSelect
                 value={instance}
                 onChange={(inst) => {
-<<<<<<< HEAD
                   setInstance(inst)
-=======
-                  const nextParams: Partial<TopSQLQueryParams> = {
-                    instance: inst.instance!,
-                    instance_type: inst.instance_type!
-                  }
-
-                  if (inst.instance_type !== 'tikv') {
-                    nextParams.group_by = AggLevel.Query
-                    if (
-                      orderBy === OrderBy.LogicalIoBytes ||
-                      orderBy === OrderBy.LogicalReadBytes ||
-                      orderBy === OrderBy.LogicalWriteBytes ||
-                      orderBy === OrderBy.RocksdbBlockReadCount
-                    ) {
-                      nextParams.order_by = OrderBy.CpuTime
-                    }
-                  }
-
-                  setStoredInstance(inst)
-                  setQueryParams(nextParams)
->>>>>>> d63e580ec (topsql: support detailed TiKV IO dimensions (#1917))
                   if (inst) {
                     telemetry.finishSelectInstance(inst?.instance_type!)
                   }
@@ -526,7 +354,8 @@ export function TopSQLList() {
                   // Reset orderBy if current selection is not supported by new instance type
                   if (
                     inst?.instance_type !== 'tikv' &&
-                    orderBy === OrderBy.LogicalIoBytes
+                    (orderBy === OrderBy.LogicalIoBytes ||
+                      isDetailedIoOrderBy(orderBy))
                   ) {
                     setOrderBy(OrderBy.CpuTime)
                   }
