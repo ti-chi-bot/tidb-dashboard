@@ -72,7 +72,10 @@ export enum AggLevel {
 export enum OrderBy {
   CpuTime = 'cpu',
   NetworkBytes = 'network',
-  LogicalIoBytes = 'logical_io'
+  LogicalIoBytes = 'logical_io',
+  LogicalReadBytes = 'logical_read',
+  LogicalWriteBytes = 'logical_write',
+  RocksdbBlockReadCount = 'rocksdb_block_read'
 }
 
 const formatLabel = (item: AggLevel): string => {
@@ -84,16 +87,26 @@ const formatOrderByLabel = (item: OrderBy): string => {
   const labels: Record<OrderBy, string> = {
     [OrderBy.CpuTime]: 'CPU',
     [OrderBy.NetworkBytes]: 'Network',
-    [OrderBy.LogicalIoBytes]: 'Logical IO'
+    [OrderBy.LogicalIoBytes]: 'Logical IO',
+    [OrderBy.LogicalReadBytes]: 'Logical Read',
+    [OrderBy.LogicalWriteBytes]: 'Logical Write',
+    [OrderBy.RocksdbBlockReadCount]: 'Read IOPS'
   }
   return labels[item] || item
 }
 
 const GROUP = [AggLevel.Query, AggLevel.Table, AggLevel.Schema, AggLevel.Region]
 
+const ORDER_BY_SELECT_WIDTH = 220
+
 const toTimeRangeValue: typeof _toTimeRangeValue = (v) => {
   return _toTimeRangeValue(v, v?.type === 'recent' ? RECENT_RANGE_OFFSET : 0)
 }
+
+const isDetailedIoOrderBy = (orderBy: OrderBy) =>
+  orderBy === OrderBy.LogicalReadBytes ||
+  orderBy === OrderBy.LogicalWriteBytes ||
+  orderBy === OrderBy.RocksdbBlockReadCount
 
 export function TopSQLList() {
   const ctx = useContext(TopSQLContext)
@@ -109,7 +122,7 @@ export function TopSQLList() {
   const { timeRange, setTimeRange } = useURLTimeRange()
   const [limit, setLimit] = useState(5)
   const [groupBy, setGroupBy] = useState(AggLevel.Query)
-  const [orderBy, setOrderBy] = useState(OrderBy.CpuTime)
+  const [selectedOrderBy, setOrderBy] = useState(OrderBy.CpuTime)
   const [timeWindowSize, setTimeWindowSize] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const computeTimeWindowSize = useMemoizedFn(
@@ -127,6 +140,73 @@ export function TopSQLList() {
     }
   )
   const {
+    instances,
+    isLoading: isInstancesLoading,
+    fetchInstances
+  } = useInstances(timeRange)
+  const {
+    data: tikvNetworkIoCollection,
+    isLoading: isTikvNetworkIoCollectionLoading,
+    error: tikvNetworkIoCollectionError,
+    sendRequest: refreshTikvNetworkIoCollection
+  } = useClientRequest(ctx!.ds.topsqlTikvNetworkIoCollectionGet, {
+    immediate: false
+  })
+  const detailedIoConfigLoaded =
+    ctx?.cfg.showDetailedIoDimensions !== undefined ||
+    !canOpenSettings ||
+    tikvNetworkIoCollection !== undefined ||
+    tikvNetworkIoCollectionError !== undefined
+  const detailedIoDimensionsEnabled =
+    ctx?.cfg.showDetailedIoDimensions === true ||
+    (ctx?.cfg.showDetailedIoDimensions !== false &&
+      canOpenSettings &&
+      tikvNetworkIoCollection?.enable === true &&
+      tikvNetworkIoCollection?.is_multi_value !== true &&
+      tikvNetworkIoCollection?.detailed_io_enabled === true)
+
+  const orderBy = useMemo(() => {
+    if (ctx?.cfg.showOrderBy !== true) {
+      return OrderBy.CpuTime
+    }
+    if (
+      instance?.instance_type !== 'tikv' &&
+      (selectedOrderBy === OrderBy.LogicalIoBytes ||
+        isDetailedIoOrderBy(selectedOrderBy))
+    ) {
+      return OrderBy.CpuTime
+    }
+    if (
+      instance?.instance_type === 'tikv' &&
+      selectedOrderBy === OrderBy.LogicalIoBytes &&
+      detailedIoConfigLoaded &&
+      detailedIoDimensionsEnabled
+    ) {
+      return OrderBy.LogicalReadBytes
+    }
+    if (
+      isDetailedIoOrderBy(selectedOrderBy) &&
+      detailedIoConfigLoaded &&
+      !detailedIoDimensionsEnabled
+    ) {
+      return OrderBy.LogicalIoBytes
+    }
+    return selectedOrderBy
+  }, [
+    ctx?.cfg.showOrderBy,
+    instance?.instance_type,
+    selectedOrderBy,
+    detailedIoConfigLoaded,
+    detailedIoDimensionsEnabled
+  ])
+
+  useEffect(() => {
+    if (selectedOrderBy !== orderBy) {
+      setOrderBy(orderBy)
+    }
+  }, [selectedOrderBy, orderBy])
+
+  const {
     topSQLData,
     isLoading: isDataLoading,
     updateTopSQLData
@@ -139,18 +219,6 @@ export function TopSQLList() {
     computeTimeWindowSize
   )
   const isLoading = isConfigLoading || isDataLoading
-  const {
-    instances,
-    isLoading: isInstancesLoading,
-    fetchInstances
-  } = useInstances(timeRange)
-  const {
-    data: tikvNetworkIoCollection,
-    isLoading: isTikvNetworkIoCollectionLoading,
-    sendRequest: refreshTikvNetworkIoCollection
-  } = useClientRequest(ctx!.ds.topsqlTikvNetworkIoCollectionGet, {
-    immediate: false
-  })
 
   const handleBrushEnd: BrushEndListener = useCallback(
     (v: BrushEvent) => {
@@ -210,6 +278,9 @@ export function TopSQLList() {
     instance?.instance_type === 'tikv' &&
     (orderBy === OrderBy.NetworkBytes ||
       orderBy === OrderBy.LogicalIoBytes ||
+      orderBy === OrderBy.LogicalReadBytes ||
+      orderBy === OrderBy.LogicalWriteBytes ||
+      orderBy === OrderBy.RocksdbBlockReadCount ||
       groupBy === AggLevel.Region)
   const shouldShowNetworkIoTip =
     shouldCheckNetworkIoCollection &&
@@ -222,10 +293,10 @@ export function TopSQLList() {
       : t('topsql.tikv_network_io_collection_tip.body')
 
   useEffect(() => {
-    if (shouldCheckNetworkIoCollection) {
+    if (canOpenSettings && instance?.instance_type === 'tikv') {
       refreshTikvNetworkIoCollection()
     }
-  }, [shouldCheckNetworkIoCollection, refreshTikvNetworkIoCollection])
+  }, [canOpenSettings, instance?.instance_type, refreshTikvNetworkIoCollection])
 
   return (
     <>
@@ -283,7 +354,8 @@ export function TopSQLList() {
                   // Reset orderBy if current selection is not supported by new instance type
                   if (
                     inst?.instance_type !== 'tikv' &&
-                    orderBy === OrderBy.LogicalIoBytes
+                    (orderBy === OrderBy.LogicalIoBytes ||
+                      isDetailedIoOrderBy(orderBy))
                   ) {
                     setOrderBy(OrderBy.CpuTime)
                   }
@@ -346,7 +418,7 @@ export function TopSQLList() {
               )}
               {ctx?.cfg.showOrderBy && instance && (
                 <Select
-                  style={{ width: 150 }}
+                  style={{ width: ORDER_BY_SELECT_WIDTH, maxWidth: '100%' }}
                   value={orderBy}
                   onChange={setOrderBy}
                   data-e2e="order_by_select"
@@ -366,13 +438,44 @@ export function TopSQLList() {
                     Order By {formatOrderByLabel(OrderBy.NetworkBytes)}
                   </Option>
                   {instance.instance_type === 'tikv' && (
-                    <Option
-                      value={OrderBy.LogicalIoBytes}
-                      key={OrderBy.LogicalIoBytes}
-                      data-e2e="order_by_option_logical_io_bytes"
-                    >
-                      Order By {formatOrderByLabel(OrderBy.LogicalIoBytes)}
-                    </Option>
+                    <>
+                      {detailedIoDimensionsEnabled ? (
+                        <>
+                          <Option
+                            value={OrderBy.LogicalReadBytes}
+                            key={OrderBy.LogicalReadBytes}
+                            data-e2e="order_by_option_logical_read_bytes"
+                          >
+                            Order By{' '}
+                            {formatOrderByLabel(OrderBy.LogicalReadBytes)}
+                          </Option>
+                          <Option
+                            value={OrderBy.LogicalWriteBytes}
+                            key={OrderBy.LogicalWriteBytes}
+                            data-e2e="order_by_option_logical_write_bytes"
+                          >
+                            Order By{' '}
+                            {formatOrderByLabel(OrderBy.LogicalWriteBytes)}
+                          </Option>
+                          <Option
+                            value={OrderBy.RocksdbBlockReadCount}
+                            key={OrderBy.RocksdbBlockReadCount}
+                            data-e2e="order_by_option_rocksdb_block_read_count"
+                          >
+                            Order By{' '}
+                            {formatOrderByLabel(OrderBy.RocksdbBlockReadCount)}
+                          </Option>
+                        </>
+                      ) : (
+                        <Option
+                          value={OrderBy.LogicalIoBytes}
+                          key={OrderBy.LogicalIoBytes}
+                          data-e2e="order_by_option_logical_io_bytes"
+                        >
+                          Order By {formatOrderByLabel(OrderBy.LogicalIoBytes)}
+                        </Option>
+                      )}
+                    </>
                   )}
                 </Select>
               )}
@@ -614,6 +717,17 @@ const useTopSQLData = (
               case OrderBy.LogicalIoBytes:
                 filterFn = (index: number) => !!item.logical_io_bytes?.[index]
                 break
+              case OrderBy.LogicalReadBytes:
+                filterFn = (index: number) => !!item.logical_read_bytes?.[index]
+                break
+              case OrderBy.LogicalWriteBytes:
+                filterFn = (index: number) =>
+                  !!item.logical_write_bytes?.[index]
+                break
+              case OrderBy.RocksdbBlockReadCount:
+                filterFn = (index: number) =>
+                  !!item.rocksdb_block_read_count?.[index]
+                break
               case OrderBy.CpuTime:
               default:
                 filterFn = (index: number) => !!item.cpu_time_ms?.[index]
@@ -637,6 +751,22 @@ const useTopSQLData = (
               item.logical_io_bytes = item.logical_io_bytes.filter((_, index) =>
                 filterFn(index)
               )
+            }
+            if (item.logical_read_bytes) {
+              item.logical_read_bytes = item.logical_read_bytes.filter(
+                (_, index) => filterFn(index)
+              )
+            }
+            if (item.logical_write_bytes) {
+              item.logical_write_bytes = item.logical_write_bytes.filter(
+                (_, index) => filterFn(index)
+              )
+            }
+            if (item.rocksdb_block_read_count) {
+              item.rocksdb_block_read_count =
+                item.rocksdb_block_read_count.filter((_, index) =>
+                  filterFn(index)
+                )
             }
 
             item.timestamp_sec = item.timestamp_sec?.map((t) => t * 1000)
@@ -667,6 +797,17 @@ const useTopSQLData = (
             case OrderBy.LogicalIoBytes:
               filterFn = (index: number) => !!byItem.logical_io_bytes?.[index]
               break
+            case OrderBy.LogicalReadBytes:
+              filterFn = (index: number) => !!byItem.logical_read_bytes?.[index]
+              break
+            case OrderBy.LogicalWriteBytes:
+              filterFn = (index: number) =>
+                !!byItem.logical_write_bytes?.[index]
+              break
+            case OrderBy.RocksdbBlockReadCount:
+              filterFn = (index: number) =>
+                !!byItem.rocksdb_block_read_count?.[index]
+              break
             case OrderBy.CpuTime:
             default:
               filterFn = (index: number) => !!d.cpu_time_ms?.[index]
@@ -688,6 +829,22 @@ const useTopSQLData = (
             byItem.logical_io_bytes = byItem.logical_io_bytes.filter(
               (_, index) => filterFn(index)
             )
+          }
+          if (byItem.logical_read_bytes) {
+            byItem.logical_read_bytes = byItem.logical_read_bytes.filter(
+              (_, index) => filterFn(index)
+            )
+          }
+          if (byItem.logical_write_bytes) {
+            byItem.logical_write_bytes = byItem.logical_write_bytes.filter(
+              (_, index) => filterFn(index)
+            )
+          }
+          if (byItem.rocksdb_block_read_count) {
+            byItem.rocksdb_block_read_count =
+              byItem.rocksdb_block_read_count.filter((_, index) =>
+                filterFn(index)
+              )
           }
 
           d.timestamp_sec = d.timestamp_sec?.map((t) => t * 1000)

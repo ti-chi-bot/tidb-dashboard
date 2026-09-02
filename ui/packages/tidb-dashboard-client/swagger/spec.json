@@ -3621,7 +3621,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/topsql.TikvNetworkIoCollectionConfig"
+                            "$ref": "#/definitions/topsql.UpdateTikvNetworkIoCollectionRequest"
                         }
                     }
                 ],
@@ -6140,6 +6140,24 @@
                 "logical_io_bytes_sum": {
                     "type": "integer"
                 },
+                "logical_read_bytes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "logical_read_bytes_sum": {
+                    "type": "integer"
+                },
+                "logical_write_bytes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "logical_write_bytes_sum": {
+                    "type": "integer"
+                },
                 "network_bytes": {
                     "type": "array",
                     "items": {
@@ -6147,6 +6165,15 @@
                     }
                 },
                 "network_bytes_sum": {
+                    "type": "integer"
+                },
+                "rocksdb_block_read_count": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "rocksdb_block_read_count_sum": {
                     "type": "integer"
                 },
                 "text": {
@@ -6178,6 +6205,12 @@
                 "logical_io_bytes": {
                     "type": "integer"
                 },
+                "logical_read_bytes": {
+                    "type": "integer"
+                },
+                "logical_write_bytes": {
+                    "type": "integer"
+                },
                 "network_bytes": {
                     "type": "integer"
                 },
@@ -6186,6 +6219,9 @@
                     "items": {
                         "$ref": "#/definitions/topsql.SummaryPlanItem"
                     }
+                },
+                "rocksdb_block_read_count": {
+                    "type": "integer"
                 },
                 "scan_indexes_per_sec": {
                     "type": "number"
@@ -6222,6 +6258,18 @@
                         "type": "integer"
                     }
                 },
+                "logical_read_bytes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "logical_write_bytes": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
                 "network_bytes": {
                     "type": "array",
                     "items": {
@@ -6233,6 +6281,12 @@
                 },
                 "plan_text": {
                     "type": "string"
+                },
+                "rocksdb_block_read_count": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
                 },
                 "scan_indexes_per_sec": {
                     "type": "number"
@@ -6268,10 +6322,27 @@
         "topsql.TikvNetworkIoCollectionConfig": {
             "type": "object",
             "properties": {
+                "detailed_io_enabled": {
+                    "type": "boolean"
+                },
                 "enable": {
                     "type": "boolean"
                 },
                 "is_multi_value": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "topsql.UpdateTikvNetworkIoCollectionRequest": {
+            "type": "object",
+            "required": [
+                "enable"
+            ],
+            "properties": {
+                "detailed_io_enabled": {
+                    "type": "boolean"
+                },
+                "enable": {
                     "type": "boolean"
                 }
             }

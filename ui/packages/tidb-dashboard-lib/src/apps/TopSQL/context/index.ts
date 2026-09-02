@@ -20,6 +20,11 @@ export interface TopsqlTikvNetworkIoCollectionConfig {
    * Whether values are not identical across TiKV nodes
    */
   is_multi_value?: boolean
+  /**
+   * Whether detailed TiKV IO collection is enabled on all TiKV nodes
+   * (resource-metering.enable-detailed-io-collection)
+   */
+  detailed_io_enabled?: boolean
 }
 
 export interface TopsqlTikvNetworkIoCollectionUpdateResponse {
@@ -85,6 +90,7 @@ export interface ITopSQLConfig {
   showGroupBy?: boolean
   showGroupByRegion?: boolean
   showOrderBy?: boolean
+  showDetailedIoDimensions?: boolean
   minWindowInterval?: number
   dataSource?: string
 }
